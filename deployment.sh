@@ -504,7 +504,8 @@ if [ "\$DOCKERFILE_FOUND" = true ]; then
   fi
 
   log "Running Docker container..."
-  if sudo docker run -d -p $APP_PORT:$APP_PORT --name $PROJECT_DIR_NAME $PROJECT_DIR_NAME; then
+  if sudo docker run -d -p $APP_PORT:8000 --name $PROJECT_DIR_NAME $PROJECT_DIR_NAME; then
+
     ok "Docker container started successfully"
   else
     fail "Failed to start Docker container"
@@ -541,6 +542,19 @@ else
 fi
 
 ok "Deployment completed successfully!"
+
+
+# Testing the application from inside the container itself
+log "Testing application endpoint from inside container..."
+if sudo docker exec $PROJECT_DIR_NAME curl -s -f http://localhost:8000/me >/dev/null 2>&1; then
+    ok "✓ Application is responding inside container"
+else
+    warn "⚠ Application not responding inside container"
+    log "Container logs for debugging:"
+    sudo docker logs $PROJECT_DIR_NAME | tail -20
+fi
+
+
 EOF
 
 DEPLOYMENT_EXIT_CODE=$?
