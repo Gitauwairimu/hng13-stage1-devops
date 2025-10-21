@@ -363,56 +363,416 @@ log_success "✓ Remote server $SERVER_IP verified and prepared successfully."
 # ============================================
 # Step 6: Deploy Application to Remote Server
 # ============================================
+# ssh -i "$SSH_KEY_PATH" \
+#   -o StrictHostKeyChecking=no \
+#   -o UserKnownHostsFile=/dev/null \
+#   "$SSH_USERNAME@$SERVER_IP" \
+#   "APP_PORT=$APP_PORT bash -s" <<'EOF'
+# set -Eeuo pipefail
+
+# log()   { echo -e "\033[1;34m[INFO]\033[0m $*"; }
+# ok()    { echo -e "\033[1;32m[OK]\033[0m $*"; }
+# warn()  { echo -e "\033[1;33m[WARN]\033[0m $*"; }
+# fail()  { echo -e "\033[1;31m[ERROR]\033[0m $*"; exit 1; }
+
+# DEPLOY_DIR="/home/$USER/app"
+# PROJECT_NAME=$(basename "$DEPLOY_DIR")
+
+# log "Checking deployed files in $DEPLOY_DIR..."
+# if [ ! -d "$DEPLOY_DIR" ]; then
+#   fail "Project directory $DEPLOY_DIR not found on remote server"
+# fi
+
+# cd "$DEPLOY_DIR" || fail "Cannot enter project directory $DEPLOY_DIR"
+
+# log "Remote Docker files:"
+# ls -la | grep -iE "(dockerfile|docker-compose)" || warn "No Docker files found"
+
+# sudo curl -sf http://localhost:$APP_PORT
+
+# # sudo docker logs app
+# # sudo docker exec app printenv APP_PORT
+# sudo docker run --rm -e APP_PORT="$APP_PORT" "$PROJECT_NAME" printenv | grep APP_PORT
+
+
+# log "Stopping any existing container..."
+# sudo docker stop "$PROJECT_NAME" 2>/dev/null || warn "No container to stop"
+# sudo docker rm "$PROJECT_NAME" 2>/dev/null || warn "No container to remove"
+
+# log "Building Docker image..."
+# if sudo docker build -t "$PROJECT_NAME" .; then
+#   ok "Docker image built successfully"
+# else
+#   fail "Docker build failed"
+# fi
+
+# log "Running container (internal port only, $APP_PORT)..."
+# # sudo docker run -d --name "$PROJECT_NAME" "$PROJECT_NAME"
+# sudo docker run -d --name "$PROJECT_NAME" -e APP_PORT="$APP_PORT" -p "$APP_PORT:$APP_PORT" "$PROJECT_NAME"
+
+
+# sleep 5
+
+# log "Checking if app responds internally..."
+# if sudo docker exec "$PROJECT_NAME" curl -sf http://localhost:$APP_PORT; then
+#   ok "✅ App is accessible internally on port $APP_PORT"
+# else
+#   fail "❌ App not reachable on $APP_PORT inside container"
+# fi
+
+# log "Checking container logs for confirmation..."
+# sudo docker logs "$PROJECT_NAME" | tail -20
+
+# ok "Deployment completed successfully!"
+# EOF
+
+
+
+
+
+
+
+
+
+
+
+# # ============================================
+# # Step 6: Deploy Application to Remote Server
+# # ============================================
+# log_info "Step 6: Deploying application to remote server"
+
+# # First, sync project files to remote server
+# log_info "Synchronizing project files to remote server..."
+# if rsync -avz -e "ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=no" \
+#     --exclude '.git' \
+#     --exclude 'node_modules' \
+#     ./ "$SSH_USERNAME@$SERVER_IP:/home/$SSH_USERNAME/app/"; then
+#     log_success "Project files synchronized successfully"
+# else
+#     log_warn "Rsync failed, using SCP as fallback..."
+#     scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -r ./* "$SSH_USERNAME@$SERVER_IP:/home/$SSH_USERNAME/app/" || error_exit "Failed to transfer project files"
+# fi
+
+# # Deploy with comprehensive debugging
+# log_info "Building and deploying Docker container..."
+
+# ssh -i "$SSH_KEY_PATH" \
+#   -o StrictHostKeyChecking=no \
+#   -o UserKnownHostsFile=/dev/null \
+#   "$SSH_USERNAME@$SERVER_IP" << DEPLOY_EOF
+# set -e
+
+# echo -e "\033[1;34m[INFO]\033[0m Starting deployment on port $APP_PORT..."
+
+# cd /home/\$USER/app
+
+# echo -e "\033[1;34m[INFO]\033[0m Current directory and files:"
+# pwd
+# ls -la
+
+# echo -e "\033[1;34m[INFO]\033[0m Checking Dockerfile:"
+# if [ -f "Dockerfile" ] || [ -f "dockerfile" ]; then
+#   echo -e "\033[1;32m[OK]\033[0m Dockerfile found"
+#   cat Dockerfile 2>/dev/null || cat dockerfile 2>/dev/null | head -20
+# else
+#   echo -e "\033[1;31m[ERROR]\033[0m No Dockerfile found!"
+#   exit 1
+# fi
+
+# echo -e "\033[1;34m[INFO]\033[0m Checking application files:"
+# ls -la *.py requirements.txt 2>/dev/null || echo -e "\033[1;33m[WARN]\033[0m No Python files found"
+
+# echo -e "\033[1;34m[INFO]\033[0m Stopping any existing containers..."
+# sudo docker stop hng13-stage1-devops 2>/dev/null || echo -e "\033[1;33m[WARN]\033[0m No existing container to stop"
+# sudo docker rm hng13-stage1-devops 2>/dev/null || echo -e "\033[1;33m[WARN]\033[0m No existing container to remove"
+
+# echo -e "\033[1;34m[INFO]\033[0m Building Docker image..."
+# if sudo docker build -t hng13-stage1-devops .; then
+#   echo -e "\033[1;32m[OK]\033[0m Docker image built successfully"
+# else
+#   echo -e "\033[1;31m[ERROR]\033[0m Docker build failed"
+#   exit 1
+# fi
+
+# echo -e "\033[1;34m[INFO]\033[0m Running container in foreground first to see output..."
+# sudo docker run --name hng13-stage1-devops-debug -p $APP_PORT:8000 hng13-stage1-devops &
+# CONTAINER_PID=\$!
+# sleep 10
+
+# echo -e "\033[1;34m[INFO]\033[0m Checking if debug container is running..."
+# if sudo docker ps | grep -q hng13-stage1-devops-debug; then
+#   echo -e "\033[1;32m[OK]\033[0m Debug container is running"
+#   echo -e "\033[1;34m[INFO]\033[0m Debug container logs:"
+#   sudo docker logs hng13-stage1-devops-debug
+# else
+#   echo -e "\033[1;31m[ERROR]\033[0m Debug container failed to start"
+#   echo -e "\033[1;34m[INFO]\033[0m Debug container logs (if any):"
+#   sudo docker logs hng13-stage1-devops-debug 2>/dev/null || echo "No logs available"
+# fi
+
+# # Stop the debug container
+# sudo docker stop hng13-stage1-devops-debug 2>/dev/null || true
+# sudo docker rm hng13-stage1-devops-debug 2>/dev/null || true
+
+# echo -e "\033[1;34m[INFO]\033[0m Now running container in detached mode..."
+# if sudo docker run -d --name hng13-stage1-devops -p $APP_PORT:8000 hng13-stage1-devops; then
+#   echo -e "\033[1;32m[OK]\033[0m Container started successfully"
+# else
+#   echo -e "\033[1;31m[ERROR]\033[0m Failed to start container"
+#   echo -e "\033[1;34m[INFO]\033[0m Checking what went wrong..."
+#   sudo docker logs hng13-stage1-devops 2>/dev/null || echo "No logs available"
+#   exit 1
+# fi
+
+# echo -e "\033[1;34m[INFO]\033[0m Waiting for application to start..."
+# sleep 15
+
+# echo -e "\033[1;34m[INFO]\033[0m Checking container status..."
+# if sudo docker ps | grep -q hng13-stage1-devops; then
+#   echo -e "\033[1;32m[OK]\033[0m Container is running"
+#   echo -e "\033[1;34m[INFO]\033[0m Container details:"
+#   sudo docker ps | grep hng13-stage1-devops
+# else
+#   echo -e "\033[1;31m[ERROR]\033[0m Container is not running"
+#   echo -e "\033[1;34m[INFO]\033[0m Checking why container stopped..."
+#   sudo docker ps -a | grep hng13-stage1-devops
+#   echo -e "\033[1;34m[INFO]\033[0m Container logs:"
+#   sudo docker logs hng13-stage1-devops
+#   exit 1
+# fi
+
+# echo -e "\033[1;34m[INFO]\033[0m Container logs:"
+# sudo docker logs hng13-stage1-devops
+
+# echo -e "\033[1;34m[INFO]\033[0m Testing application internally..."
+# if sudo docker exec hng13-stage1-devops curl -sf http://localhost:8000 > /dev/null 2>&1; then
+#   echo -e "\033[1;32m[OK]\033[0m Application is responding internally"
+# else
+#   echo -e "\033[1;33m[WARN]\033[0m Application not responding internally"
+#   echo -e "\033[1;34m[INFO]\033[0m Recent container logs:"
+#   sudo docker logs hng13-stage1-devops | tail -30
+# fi
+
+# echo -e "\033[1;34m[INFO]\033[0m Testing application externally..."
+# if curl -sf http://localhost:$APP_PORT > /dev/null 2>&1; then
+#   echo -e "\033[1;32m[OK]\033[0m Application is responding on port $APP_PORT"
+# else
+#   echo -e "\033[1;33m[WARN]\033[0m Application not responding externally yet"
+#   echo -e "\033[1;34m[INFO]\033[0m Checking port binding:"
+#   sudo docker port hng13-stage1-devops
+#   echo -e "\033[1;34m[INFO]\033[0m Checking network:"
+#   sudo netstat -tuln | grep ":$APP_PORT" || echo "Port $APP_PORT not listening"
+# fi
+
+# echo -e "\033[1;32m[OK]\033[0m Deployment completed successfully!"
+# DEPLOY_EOF
+
+# # Final health check
+# log_info "Performing final health check..."
+# sleep 5
+
+# if curl -s -f --connect-timeout 30 "http://$SERVER_IP:$APP_PORT/me" >/dev/null 2>&1; then
+#     log_success "✓ Application deployed and responding successfully!"
+#     log_success "🎉 Your application is now live at: http://$SERVER_IP:$APP_PORT"
+#     log_success "📊 Test your endpoint: curl http://$SERVER_IP:$APP_PORT/me"
+# else
+#     log_warn "⚠ Application may be starting up or having issues"
+#     log_info "Checking remote container status..."
+#     ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$SSH_USERNAME@$SERVER_IP" "
+#         echo '=== Container Status ==='
+#         sudo docker ps -a | grep hng13-stage1-devops || echo 'Container not found'
+#         echo ''
+#         echo '=== Recent Logs ==='
+#         sudo docker logs hng13-stage1-devops 2>/dev/null | tail -50 || echo 'No logs available'
+#         echo ''
+#         echo '=== Port Mapping ==='
+#         sudo docker port hng13-stage1-devops 2>/dev/null || echo 'No port mapping'
+#     "
+#     log_success "✓ Deployment attempted - check logs above for details"
+# fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ============================================
+# Step 6: Deploy Application to Remote Server
+# ============================================
+log_info "Step 6: Deploying application to remote server"
+
+# First, sync project files to remote server
+log_info "Synchronizing project files to remote server..."
+if rsync -avz -e "ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=no" \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    ./ "$SSH_USERNAME@$SERVER_IP:/home/$SSH_USERNAME/app/"; then
+    log_success "Project files synchronized successfully"
+else
+    log_warn "Rsync failed, using SCP as fallback..."
+    scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -r ./* "$SSH_USERNAME@$SERVER_IP:/home/$SSH_USERNAME/app/" || error_exit "Failed to transfer project files"
+fi
+
+# Deploy with comprehensive debugging
+log_info "Building and deploying Docker container..."
+
 ssh -i "$SSH_KEY_PATH" \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
-  "$SSH_USERNAME@$SERVER_IP" \
-  "APP_PORT=$APP_PORT bash -s" <<'EOF'
-set -Eeuo pipefail
+  "$SSH_USERNAME@$SERVER_IP" << DEPLOY_EOF
+set -e
 
-log()   { echo -e "\033[1;34m[INFO]\033[0m $*"; }
-ok()    { echo -e "\033[1;32m[OK]\033[0m $*"; }
-warn()  { echo -e "\033[1;33m[WARN]\033[0m $*"; }
-fail()  { echo -e "\033[1;31m[ERROR]\033[0m $*"; exit 1; }
+echo -e "\033[1;34m[INFO]\033[0m Starting deployment on port $APP_PORT..."
 
-DEPLOY_DIR="/home/$USER/app"
-PROJECT_NAME=$(basename "$DEPLOY_DIR")
+cd /home/\$USER/app
 
-log "Checking deployed files in $DEPLOY_DIR..."
-if [ ! -d "$DEPLOY_DIR" ]; then
-  fail "Project directory $DEPLOY_DIR not found on remote server"
-fi
+echo -e "\033[1;34m[INFO]\033[0m Current directory and files:"
+pwd
+ls -la
 
-cd "$DEPLOY_DIR" || fail "Cannot enter project directory $DEPLOY_DIR"
-
-log "Remote Docker files:"
-ls -la | grep -iE "(dockerfile|docker-compose)" || warn "No Docker files found"
-
-log "Stopping any existing container..."
-sudo docker stop "$PROJECT_NAME" 2>/dev/null || warn "No container to stop"
-sudo docker rm "$PROJECT_NAME" 2>/dev/null || warn "No container to remove"
-
-log "Building Docker image..."
-if sudo docker build -t "$PROJECT_NAME" .; then
-  ok "Docker image built successfully"
+echo -e "\033[1;34m[INFO]\033[0m Checking Dockerfile:"
+if [ -f "Dockerfile" ] || [ -f "dockerfile" ]; then
+  echo -e "\033[1;32m[OK]\033[0m Dockerfile found"
+  cat Dockerfile 2>/dev/null || cat dockerfile 2>/dev/null | head -20
 else
-  fail "Docker build failed"
+  echo -e "\033[1;31m[ERROR]\033[0m No Dockerfile found!"
+  exit 1
 fi
 
-log "Running container (internal port only, $APP_PORT)..."
-sudo docker run -d --name "$PROJECT_NAME" "$PROJECT_NAME"
+echo -e "\033[1;34m[INFO]\033[0m Stopping any existing containers..."
+sudo docker stop hng13-stage1-devops 2>/dev/null || echo -e "\033[1;33m[WARN]\033[0m No existing container to stop"
+sudo docker rm hng13-stage1-devops 2>/dev/null || echo -e "\033[1;33m[WARN]\033[0m No existing container to remove"
 
+echo -e "\033[1;34m[INFO]\033[0m Building Docker image..."
+if sudo docker build -t hng13-stage1-devops .; then
+  echo -e "\033[1;32m[OK]\033[0m Docker image built successfully"
+else
+  echo -e "\033[1;31m[ERROR]\033[0m Docker build failed"
+  exit 1
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m Running container..."
+if sudo docker run -d --name hng13-stage1-devops -p $APP_PORT:8000 hng13-stage1-devops; then
+  echo -e "\033[1;32m[OK]\033[0m Container started successfully"
+  CONTAINER_ID=\$(sudo docker ps -q -f name=hng13-stage1-devops)
+  echo -e "\033[1;34m[INFO]\033[0m Container ID: \$CONTAINER_ID"
+else
+  echo -e "\033[1;31m[ERROR]\033[0m Failed to start container"
+  exit 1
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m Waiting for application to start..."
+sleep 10
+
+echo -e "\033[1;34m[INFO]\033[0m ==========================================="
+echo -e "\033[1;34m[INFO]\033[0m TESTING APPLICATION INSIDE HOST"
+echo -e "\033[1;34m[INFO]\033[0m ==========================================="
+
+echo -e "\033[1;34m[INFO]\033[0m 1. Checking container status..."
+if sudo docker ps | grep -q hng13-stage1-devops; then
+  echo -e "\033[1;32m[OK]\033[0m Container is running"
+  echo -e "\033[1;34m[INFO]\033[0m Container details:"
+  sudo docker ps | grep hng13-stage1-devops
+else
+  echo -e "\033[1;31m[ERROR]\033[0m Container is not running!"
+  echo -e "\033[1;34m[INFO]\033[0m Checking stopped containers:"
+  sudo docker ps -a | grep hng13-stage1-devops
+  echo -e "\033[1;34m[INFO]\033[0m Container logs:"
+  sudo docker logs hng13-stage1-devops
+  exit 1
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m 2. Checking container health..."
+sudo docker inspect hng13-stage1-devops | grep -A 10 \"Health\" || echo -e "\033[1;33m[WARN]\033[0m No health check configured"
+
+echo -e "\033[1;34m[INFO]\033[0m 3. Testing from INSIDE the container..."
+if sudo docker exec hng13-stage1-devops curl -s -f http://localhost:8000/ > /dev/null 2>&1; then
+  echo -e "\033[1;32m[OK]\033[0m ✅ Application is running INSIDE container (port 8000)"
+  echo -e "\033[1;34m[INFO]\033[0m Testing /me endpoint inside container:"
+  sudo docker exec hng13-stage1-devops curl -s http://localhost:8000/me | head -5
+else
+  echo -e "\033[1;31m[ERROR]\033[0m ❌ Application NOT running inside container"
+  echo -e "\033[1;34m[INFO]\033[0m Container logs:"
+  sudo docker logs hng13-stage1-devops | tail -30
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m 4. Testing from HOST network (container IP)..."
+CONTAINER_IP=\$(sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' hng13-stage1-devops)
+echo -e "\033[1;34m[INFO]\033[0m Container IP: \$CONTAINER_IP"
+if [ -n "\$CONTAINER_IP" ]; then
+  if curl -s -f http://\$CONTAINER_IP:8000/ > /dev/null 2>&1; then
+    echo -e "\033[1;32m[OK]\033[0m ✅ Application accessible via container IP: \$CONTAINER_IP:8000"
+  else
+    echo -e "\033[1;33m[WARN]\033[0m ⚠ Application not accessible via container IP"
+  fi
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m 5. Testing from HOST network (localhost port mapping)..."
+if curl -s -f http://localhost:$APP_PORT/ > /dev/null 2>&1; then
+  echo -e "\033[1;32m[OK]\033[0m ✅ Application accessible via HOST localhost:$APP_PORT"
+  echo -e "\033[1;34m[INFO]\033[0m Testing /me endpoint on host:"
+  curl -s http://localhost:$APP_PORT/me | head -5
+else
+  echo -e "\033[1;33m[WARN]\033[0m ⚠ Application not accessible via host port $APP_PORT"
+fi
+
+echo -e "\033[1;34m[INFO]\033[0m 6. Checking port mapping..."
+echo -e "\033[1;34m[INFO]\033[0m Docker port mapping:"
+sudo docker port hng13-stage1-devops
+
+echo -e "\033[1;34m[INFO]\033[0m 7. Checking host network status..."
+echo -e "\033[1;34m[INFO]\033[0m Host ports listening:"
+sudo netstat -tuln | grep ":$APP_PORT" || echo -e "\033[1;33m[WARN]\033[0m Port $APP_PORT not listening on host"
+
+echo -e "\033[1;34m[INFO]\033[0m 8. Recent container logs:"
+sudo docker logs hng13-stage1-devops | tail -20
+
+echo -e "\033[1;32m[OK]\033[0m Host testing completed!"
+DEPLOY_EOF
+
+# Final external health check
+log_info "Performing external health check..."
 sleep 5
 
-log "Checking if app responds internally..."
-if sudo docker exec "$PROJECT_NAME" curl -sf http://localhost:$APP_PORT; then
-  ok "✅ App is accessible internally on port $APP_PORT"
+log_info "Testing application from EXTERNAL network..."
+if curl -s -f --connect-timeout 30 "http://$SERVER_IP:$APP_PORT/me" >/dev/null 2>&1; then
+    log_success "✓ Application deployed and responding successfully!"
+    log_success "🎉 Your application is now live at: http://$SERVER_IP:$APP_PORT"
+    log_success "📊 Test your endpoint: curl http://$SERVER_IP:$APP_PORT/me"
+    
+    # Show actual response
+    log_info "Sample response:"
+    curl -s "http://$SERVER_IP:$APP_PORT/me" | head -10
 else
-  fail "❌ App not reachable on $APP_PORT inside container"
+    log_warn "⚠ Application not accessible externally yet"
+    log_info "This could be due to:"
+    log_info "  - Application still starting up"
+    log_info "  - Firewall blocking port $APP_PORT"
+    log_info "  - Network configuration"
+    log_info ""
+    log_info "The application is running on the host but may not be externally accessible"
+    log_info "Check: sudo ufw status (on the server)"
 fi
-
-log "Checking container logs for confirmation..."
-sudo docker logs "$PROJECT_NAME" | tail -20
-
-ok "Deployment completed successfully!"
-EOF
