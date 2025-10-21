@@ -63,6 +63,16 @@ def get_current_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
+
+@app.get("/")
+async def root():
+    """
+    Simple root endpoint
+    """
+    return {"message": "HNG DevOps API is running", "status": "healthy"}
+
+
+
 @app.get("/me", response_class=JSONResponse)
 async def get_me():
     """

@@ -357,211 +357,62 @@ log_success "✓ Remote server $SERVER_IP verified and prepared successfully."
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ============================================
 # Step 6: Deploy the Dockerized Application
 # ============================================
 # ============================================
 # Step 6: Deploy Application to Remote Server
 # ============================================
-log_info "Step 6: Deploying application to remote server"
-
-# Get the current project directory name (from the cloned repo)
-PROJECT_DIR_NAME=$(basename "$(pwd)")
-
-log_info "Project directory name: $PROJECT_DIR_NAME"
-log_info "Current local directory: $(pwd)"
-log_info "Local Docker files:"
-ls -la | grep -iE "(dockerfile|docker-compose)" || log_warn "No Docker files found locally"
-
 ssh -i "$SSH_KEY_PATH" \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
-  "$SSH_USERNAME@$SERVER_IP" bash <<EOF
+  "$SSH_USERNAME@$SERVER_IP" \
+  "APP_PORT=$APP_PORT bash -s" <<'EOF'
 set -Eeuo pipefail
 
-# === Helper functions ===
-log()   { echo -e "\033[1;34m[INFO]\033[0m \$*"; }
-ok()    { echo -e "\033[1;32m[OK]\033[0m \$*"; }
-warn()  { echo -e "\033[1;33m[WARN]\033[0m \$*"; }
-fail()  { echo -e "\033[1;31m[ERROR]\033[0m \$*"; exit 1; }
+log()   { echo -e "\033[1;34m[INFO]\033[0m $*"; }
+ok()    { echo -e "\033[1;32m[OK]\033[0m $*"; }
+warn()  { echo -e "\033[1;33m[WARN]\033[0m $*"; }
+fail()  { echo -e "\033[1;31m[ERROR]\033[0m $*"; exit 1; }
 
-DEPLOY_DIR="/home/\$USER/app"
+DEPLOY_DIR="/home/$USER/app"
+PROJECT_NAME=$(basename "$DEPLOY_DIR")
 
-log "Checking deployed files in \$DEPLOY_DIR..."
-
-# Check if project directory exists
-if [ ! -d "\$DEPLOY_DIR" ]; then
-  fail "Project directory \$DEPLOY_DIR not found on remote server"
+log "Checking deployed files in $DEPLOY_DIR..."
+if [ ! -d "$DEPLOY_DIR" ]; then
+  fail "Project directory $DEPLOY_DIR not found on remote server"
 fi
 
-# Navigate to project directory
-cd "\$DEPLOY_DIR" || fail "Cannot enter project directory \$DEPLOY_DIR"
+cd "$DEPLOY_DIR" || fail "Cannot enter project directory $DEPLOY_DIR"
 
-log "Current remote directory: \$(pwd)"
 log "Remote Docker files:"
-ls -la | grep -iE "(dockerfile|docker-compose)" || warn "No Docker files found in project directory"
+ls -la | grep -iE "(dockerfile|docker-compose)" || warn "No Docker files found"
 
-log "All files in remote project directory:"
-ls -la
+log "Stopping any existing container..."
+sudo docker stop "$PROJECT_NAME" 2>/dev/null || warn "No container to stop"
+sudo docker rm "$PROJECT_NAME" 2>/dev/null || warn "No container to remove"
 
-# Check for Docker configuration files (case-insensitive)
-DOCKERFILE_FOUND=false
-COMPOSE_FOUND=false
-
-# Check for Dockerfile with different case variations
-if [ -f "Dockerfile" ] || [ -f "dockerfile" ] || [ -f "DOCKERFILE" ]; then
-  # Find the actual filename
-  DOCKERFILE_NAME=\$(find . -maxdepth 1 -iname "dockerfile" -type f | head -1)
-  if [ -n "\$DOCKERFILE_NAME" ]; then
-    ok "Found Dockerfile: \$DOCKERFILE_NAME"
-    DOCKERFILE_FOUND=true
-    log "Dockerfile content (first 10 lines):"
-    head -10 "\$DOCKERFILE_NAME"
-  fi
+log "Building Docker image..."
+if sudo docker build -t "$PROJECT_NAME" .; then
+  ok "Docker image built successfully"
 else
-  warn "No Dockerfile found in project root"
+  fail "Docker build failed"
 fi
 
-if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ] || [ -f "docker-compose.yml" ] || [ -f "DOCKER-COMPOSE.YML" ]; then
-  # Find the actual filename
-  COMPOSE_FILE=\$(find . -maxdepth 1 \\( -iname "docker-compose.yml" -o -iname "docker-compose.yaml" \\) -type f | head -1)
-  if [ -n "\$COMPOSE_FILE" ]; then
-    ok "Found docker-compose file: \$COMPOSE_FILE"
-    COMPOSE_FOUND=true
-    log "docker-compose content (first 10 lines):"
-    head -10 "\$COMPOSE_FILE"
-  fi
+log "Running container (internal port only, $APP_PORT)..."
+sudo docker run -d --name "$PROJECT_NAME" "$PROJECT_NAME"
+
+sleep 5
+
+log "Checking if app responds internally..."
+if sudo docker exec "$PROJECT_NAME" curl -sf http://localhost:$APP_PORT; then
+  ok "✅ App is accessible internally on port $APP_PORT"
 else
-  warn "No docker-compose.yml found in project root"
+  fail "❌ App not reachable on $APP_PORT inside container"
 fi
 
-# Search for Docker files in subdirectories if not found in root
-if [ "\$DOCKERFILE_FOUND" = false ] || [ "\$COMPOSE_FOUND" = false ]; then
-  log "Searching for Docker files in subdirectories..."
-  find . -iname "dockerfile" -o -iname "docker-compose.yml" -o -iname "docker-compose.yaml" | while read -r file; do
-    ok "Found: \$file"
-    if [[ "\$file" =~ [Dd]ockerfile ]]; then
-      DOCKERFILE_FOUND=true
-    fi
-    if [[ "\$file" =~ [Dd]ocker-compose ]]; then
-      COMPOSE_FOUND=true
-    fi
-  done
-fi
-
-# Exit if no Docker configuration found
-if [ "\$DOCKERFILE_FOUND" = false ] && [ "\$COMPOSE_FOUND" = false ]; then
-  fail "No Dockerfile or docker-compose.yml found in project — cannot deploy"
-fi
-
-# Stop and remove existing containers
-log "Stopping and removing existing containers..."
-sudo docker stop $PROJECT_DIR_NAME 2>/dev/null || warn "No existing container to stop"
-sudo docker rm $PROJECT_DIR_NAME 2>/dev/null || warn "No existing container to remove"
-
-# Build and deploy based on available configuration
-if [ "\$DOCKERFILE_FOUND" = true ]; then
-  log "Building Docker image..."
-  
-  # Use the actual Dockerfile name found
-  DOCKERFILE_NAME=\$(find . -iname "dockerfile" -type f | head -1)
-  if [ -n "\$DOCKERFILE_NAME" ]; then
-    # If Dockerfile is not in root or has different name, we need to handle it
-    DOCKERFILE_DIR=\$(dirname "\$DOCKERFILE_NAME")
-    if [ "\$DOCKERFILE_DIR" != "." ]; then
-      log "Dockerfile found in subdirectory: \$DOCKERFILE_DIR"
-      cd "\$DOCKERFILE_DIR" || fail "Cannot enter Dockerfile directory"
-    fi
-  fi
-  
-  if sudo docker build -t $PROJECT_DIR_NAME .; then
-    ok "Docker image built successfully"
-  else
-    fail "Docker build failed"
-  fi
-
-  log "Running Docker container..."
-  if sudo docker run -d -p $APP_PORT:8000 --name $PROJECT_DIR_NAME $PROJECT_DIR_NAME; then
-
-    ok "Docker container started successfully"
-  else
-    fail "Failed to start Docker container"
-  fi
-fi
-
-if [ "\$COMPOSE_FOUND" = true ]; then
-  log "Starting services with Docker Compose..."
-  if command -v docker-compose >/dev/null 2>&1; then
-    if sudo docker-compose up -d; then
-      ok "Docker Compose services started successfully"
-    else
-      fail "Docker Compose failed to start services"
-    fi
-  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    if sudo docker compose up -d; then
-      ok "Docker Compose services started successfully"
-    else
-      fail "Docker Compose failed to start services"
-    fi
-  else
-    warn "Docker Compose not available - skipping compose deployment"
-  fi
-fi
-
-# Verify container is running
-log "Checking container status..."
-if sudo docker ps | grep -q $PROJECT_DIR_NAME; then
-  ok "Container is running successfully"
-  log "Container details:"
-  sudo docker ps | grep $PROJECT_DIR_NAME
-else
-  warn "Container may not be running - check logs with: docker logs $PROJECT_DIR_NAME"
-fi
+log "Checking container logs for confirmation..."
+sudo docker logs "$PROJECT_NAME" | tail -20
 
 ok "Deployment completed successfully!"
-
-
-# Testing the application from inside the container itself
-log "Testing application endpoint from inside container..."
-if sudo docker exec $PROJECT_DIR_NAME curl -s -f http://localhost:8000/me >/dev/null 2>&1; then
-    ok "✓ Application is responding inside container"
-else
-    warn "⚠ Application not responding inside container"
-    log "Container logs for debugging:"
-    sudo docker logs $PROJECT_DIR_NAME | tail -20
-fi
-
-
 EOF
-
-DEPLOYMENT_EXIT_CODE=$?
-
-if [ $DEPLOYMENT_EXIT_CODE -eq 0 ]; then
-  log_success "✓ Application deployed successfully to $SERVER_IP:$APP_PORT"
-  log_success "🎉 Your application is now live at: http://$SERVER_IP:$APP_PORT"
-else
-  error_exit "✗ Deployment failed with exit code: $DEPLOYMENT_EXIT_CODE"
-fi
