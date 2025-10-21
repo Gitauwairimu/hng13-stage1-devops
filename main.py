@@ -62,7 +62,8 @@ def get_current_timestamp() -> str:
     """Get current UTC time in ISO 8601 format"""
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-@app.get("/me", response_class=JSONResponse)
+@app.get("/", response_class=JSONResponse)
+# @app.get("/me", response_class=JSONResponse)
 async def get_me():
     """
     Endpoint that returns user information in the exact JSON format required
