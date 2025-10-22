@@ -1279,30 +1279,3 @@ fi
 
 write_log "INFO" "Deployment script completed"
 echo "Detailed logs available in: $LOG_FILE"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # 34.228.21.25
-# # https://github.com/Gitauwairimu/hng13-stage1-devops
-# # /home/gitau/projects/hng/hng2025/hng13-stage0-devops/Stage1/hng2.pem
