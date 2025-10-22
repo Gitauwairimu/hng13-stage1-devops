@@ -1672,8 +1672,9 @@ EOF
     # Final cleanup and summary
     # ============================================
     log_success "🎉 DEPLOYMENT COMPLETED SUCCESSFULLY!"
-    log_info "Application is accessible at: http://$SERVER_IP/"
-    log_info "Direct access: http://$SERVER_IP:$APP_PORT/"
+    log_info "Application Http is accessible at: http://$SERVER_IP/"
+    log_info "Application Https is accessible at: https://$SERVER_IP/"
+    log_info "Direct access from inside of host: http://$SERVER_IP:$APP_PORT/"
 }
 
 # Run main function
